@@ -1,0 +1,392 @@
+<!--
+Simulador de Quiz Interativo (HTML + CSS + JS)
+Uso: coloque este arquivo no repositório do GitHub (pasta /docs ou root) e abra no navegador.
+Características:
+- Níveis: Intermediário / Avançado
+- Timer por questão (configurável)
+- Feedback imediato com explicação
+- Armazenamento de progresso local (localStorage)
+- Exportar resultados em JSON/CSV
+- Fácil de estender: adicionar questões no array `QUESTIONS`
+
+Como adicionar mais questões:
+- Cada questão é um objeto: { id, level: 'intermediate'|'advanced', type: 'mcq'|'tf', question, options: [], answer: index_or_bool, explanation }
+- Coloque novas questões no array `QUESTIONS` abaixo ou carregue via fetch de um arquivo JSON externo.
+
+Autor: Assistente / para André
+-->
+
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulador de Quiz - André Gonçallez</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+      --success:#10b981; --danger:#ef4444; --font-sans: Inter, Roboto, -apple-system, 'Segoe UI', Arial;
+    }
+    *{box-sizing:border-box}
+    body{font-family:var(--font-sans);background:linear-gradient(180deg,#071023 0%, #07192b 100%);color:#e6eef8;margin:0;padding:24px}
+    .container{max-width:980px;margin:0 auto}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    header h1{font-size:20px;margin:0}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03);padding:18px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    select,input[type=number]{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);color:var(--muted)}
+    button{background:var(--accent);border:none;padding:10px 12px;border-radius:8px;color:#042024;cursor:pointer;font-weight:600}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .quiz-area{display:grid;grid-template-columns:1fr 300px;gap:16px;margin-top:16px}
+    .question{padding:16px}
+    .question h3{margin-top:0}
+    .options{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+    .opt{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);cursor:pointer}
+    .opt.correct{border-color:rgba(16,185,129,0.2);background:rgba(16,185,129,0.06)}
+    .opt.wrong{border-color:rgba(239,68,68,0.16);background:rgba(239,68,68,0.04)}
+    aside{position:relative}
+    .panel{position:sticky;top:24px;padding:16px;border-radius:10px}
+    .stats{display:flex;gap:12px;flex-direction:column}
+    .small{font-size:13px;color:var(--muted)}
+    .explain{margin-top:12px;padding:12px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02)}
+    footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
+    .tag{display:inline-block;padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.02);font-size:12px}
+    .hidden{display:none}
+    .progressbar{height:10px;background:rgba(255,255,255,0.03);border-radius:999px;overflow:hidden}
+    .progress{height:100%;background:linear-gradient(90deg,var(--accent),#7c3aed)}
+    pre{white-space:pre-wrap;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="card" style="padding:12px;display:flex;align-items:center;gap:12px">
+        <img src="https://raw.githubusercontent.com/github/explore/main/topics/security/security.png" alt="logo" width="44" style="border-radius:8px;"/>
+        <div>
+          <h1>Simulador de Quiz - Níveis Intermediário / Avançado</h1>
+          <div class="small">Projeto: André Gonçallez — pronto para publicar no GitHub</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="controls">
+        <label class="small">Nível:
+          <select id="levelSelect">
+            <option value="intermediate">Intermediário</option>
+            <option value="advanced">Avançado</option>
+          </select>
+        </label>
+
+        <label class="small">Número de questões:
+          <input id="qCount" type="number" min="5" max="100" value="20" />
+        </label>
+
+        <label class="small">Tempo por questão (seg):
+          <input id="timerPerQ" type="number" min="10" max="600" value="90" />
+        </label>
+
+        <button id="startBtn">Iniciar simulado</button>
+        <button id="resetBtn" class="ghost">Resetar progresso</button>
+        <button id="exportBtn" class="ghost">Exportar resultados</button>
+      </div>
+
+      <div class="quiz-area">
+        <div class="card question">
+          <div id="questionMeta" class="small">Questão <span id="qIndex">0</span> / <span id="qTotal">0</span></div>
+          <h3 id="questionText">Clique em "Iniciar simulado" para começar</h3>
+
+          <div id="options" class="options"></div>
+
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button id="nextBtn" class="ghost" disabled>Próxima</button>
+            <button id="submitBtn">Confirmar resposta</button>
+            <div style="margin-left:auto" class="small">Tempo restante: <span id="timer">--:--</span></div>
+          </div>
+
+          <div id="explanation" class="explain hidden"></div>
+        </div>
+
+        <aside>
+          <div class="card panel">
+            <div class="stats">
+              <div><strong>Pontuação:</strong> <span id="score">0</span></div>
+              <div><strong>Acertos:</strong> <span id="hits">0</span> / <span id="answered">0</span></div>
+              <div><strong>Erros:</strong> <span id="fails">0</span></div>
+              <div class="small">Progresso</div>
+              <div class="progressbar"><div id="prog" class="progress" style="width:0%"></div></div>
+              <div style="margin-top:8px"><span class="tag" id="levelTag">Nível: -</span></div>
+            </div>
+
+            <hr style="margin:12px 0;border-color:rgba(255,255,255,0.03)"/>
+            <div class="small"><strong>Resumo:</strong>
+              <pre id="summary">Nenhum simulado iniciado.</pre>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <footer>
+        <div class="small">Dica: adicione suas questões em formato JSON no array QUESTIONS (no script) ou carregue um arquivo externo.</div>
+      </footer>
+    </section>
+  </div>
+
+<script>
+// ------------------------
+// Exemplo de perguntas (substitua / expanda no GitHub)
+// Cada questão: id, level, type ('mcq'|'tf'), question, options (se mcq), answer (index starting 0 or boolean), explanation
+// ------------------------
+const QUESTIONS = [
+  // Intermediário (exemplos)
+  { id: 'i1', level: 'intermediate', type: 'mcq', question: 'Qual comando Linux lista processos ativos e pode ser usado para ordenar por uso de CPU?', options: ['top','ps aux --sort=-%cpu','htop','nice'], answer: 1, explanation: 'ps aux --sort=-%cpu lista processos e ordena por uso de CPU. top e htop também mostram, mas a opção de ordenação direta é do ps.' },
+  { id: 'i2', level: 'intermediate', type: 'mcq', question: 'Qual RFC define o IPv4?', options:['RFC 791','RFC 826','RFC 2460','RFC 1918'], answer: 0, explanation: 'RFC 791 define o IPv4.'},
+  { id: 'i3', level: 'intermediate', type: 'mcq', question: 'Em OSPF, o que é LSA?', options:['Link State Advertisement','Local Segment Address','Layer Service Announcement','Logical System Area'], answer: 0, explanation: 'LSA = Link State Advertisement.'},
+  { id: 'i4', level: 'intermediate', type: 'mcq', question: 'Qual ferramenta é mais indicada para capturar e analisar pacotes em rede?', options:['nmap','Wireshark','Metasploit','Burp Suite'], answer: 1, explanation: 'Wireshark é a ferramenta padrão para captura e análise de pacotes.'},
+  { id: 'i5', level: 'intermediate', type: 'mcq', question: 'Qual comando Git cria um novo branch local?', options:['git branch nome','git checkout nome','git init nome','git push origin nome'], answer: 0, explanation: 'git branch nome cria o branch; git checkout -b combina criação+mudança.'},
+  { id: 'i6', level: 'intermediate', type: 'mcq', question: 'No GCP, qual serviço é usado para armazenar objetos como arquivos?', options:['Compute Engine','Cloud Storage','BigQuery','Cloud SQL'], answer: 1, explanation: 'Cloud Storage (GCS) é para armazenar objetos.'},
+  { id: 'i7', level: 'intermediate', type: 'mcq', question: 'O que é menor privilégio?', options:['Dar todos os acessos','Dar apenas o necessário','Ignorar permissões','Apenas admins têm acesso'], answer: 1, explanation: 'Princípio do menor privilégio: conceder apenas o necessário para tarefas.'},
+  { id: 'i8', level: 'intermediate', type: 'mcq', question: 'Qual é a função do Trivy?', options:['Monitor de rede','Scanner de vulnerabilidades de container','Gerenciador de pacotes','Ferramenta de backup'], answer: 1, explanation: 'Trivy é scanner de vulnerabilidades para imagens de container.'},
+  { id: 'i9', level: 'intermediate', type: 'mcq', question: 'Qual o propósito de um SIEM?', options:['Gerenciar patches','Correlacionar eventos de segurança','Backup de logs','Balanceamento de carga'], answer: 1, explanation: 'SIEM agrega e correlaciona eventos para detecção e investigação.'},
+  { id: 'i10', level: 'intermediate', type: 'mcq', question: 'Qual protocolo é usado para atribuição dinâmica de IP em IPv4?', options:['ARP','DHCP','DNS','ICMP'], answer: 1, explanation: 'DHCP atribui endereços IPv4 dinamicamente.'},
+
+  // Avançado (exemplos)
+  { id: 'a1', level: 'advanced', type: 'mcq', question: 'Em OSPF, qual é a função do DR (Designated Router)?', options:['Gerenciar LSDB','Reduzir broadcast','Reduzir adjacências em redes multiacesso','Fazer NAT'], answer: 2, explanation: 'O DR reduz o número de adjacências em redes multiacesso (como Ethernet).'},
+  { id: 'a2', level: 'advanced', type: 'mcq', question: 'Qual comando Terraform inicializa um diretório de trabalho?', options:['terraform apply','terraform init','terraform plan','terraform validate'], answer: 1, explanation: 'terraform init baixa providers e inicializa o diretório.'},
+  { id: 'a3', level: 'advanced', type: 'mcq', question: 'Qual técnica é usada para proteger segredos em pipeline CI/CD?', options:['Guardar em código fonte','Usar variáveis de ambiente seguras/secret manager','Enviar por e-mail','Hardcode no container'], answer: 1, explanation: 'Segredos devem ser armazenados em secret managers ou variáveis protegidas do CI.'},
+  { id: 'a4', level: 'advanced', type: 'mcq', question: 'Qual é a função do Cloud Armor (GCP)?', options:['Gerenciar VMs','Firewall de camada 7 / WAF','Banco de dados','Serviço de fila'], answer: 1, explanation: 'Cloud Armor é WAF/Proteção DDoS no GCP.'},
+  { id: 'a5', level: 'advanced', type: 'mcq', question: 'O que é CVSS?', options:['Protocolo de rede','Sistema de pontuação de vulnerabilidades','Linguagem de script','Ambiente virtual'], answer: 1, explanation: 'CVSS é a Common Vulnerability Scoring System, métrica para severidade.'},
+  { id: 'a6', level: 'advanced', type: 'mcq', question: 'Em SIEM tuning, o que é false positive tuning?', options:['Aumentar alertas','Reduzir alertas irrelevantes','Excluir logs','Fazer backup'], answer: 1, explanation: 'Tuning diminui falsos positivos ajustando regras e thresholds.'},
+  { id: 'a7', level: 'advanced', type: 'mcq', question: 'Qual é a melhor prática para autenticação entre microsserviços?', options:['Chaves estáticas em código','mTLS ou tokens gerenciados','Senhas em texto plano','Enviar via GET'], answer: 1, explanation: 'mTLS ou tokens gerenciados fornecem autenticação e confidencialidade.'},
+  { id: 'a8', level: 'advanced', type: 'mcq', question: 'Como fazer análise forense básica em um arquivo de log corrompido?', options:['Ignorar o arquivo','Tentar recuperar com ferramentas de parsing/grep e timestamps','Deletar','Reinicializar sistema'], answer: 1, explanation: 'Usar ferramentas de parsing, buscar timestamps e reconstruir sequência de eventos.'},
+  { id: 'a9', level: 'advanced', type: 'mcq', question: 'Qual tipo de ataque explora vulnerabilidades de serialização insegura?', options:['SQL Injection','Deserialization attack','XSS','CSRF'], answer: 1, explanation: 'Deserialization attacks exploram objetos maliciosos deserializados sem validação.'},
+  { id: 'a10', level: 'advanced', type: 'mcq', question: 'Qual é o objetivo principal de uma resposta a incidente (IR)?', options:['Punir usuários','Conter, erradicar e recuperar do incidente','Ignorar logs','Fazer deploy'], answer: 1, explanation: 'IR busca conter, erradicar e recuperar sistemas afetados e reduzir impactos.'}
+];
+
+// ------------------------
+// Estado do quiz
+// ------------------------
+let state = {
+  pool: [],
+  currentIndex: 0,
+  score: 0,
+  hits: 0,
+  fails: 0,
+  answered: 0,
+  choices: [],
+  startTime: null,
+  perQuestionSeconds: 90,
+  timerInterval: null
+};
+
+// UI refs
+const levelSelect = document.getElementById('levelSelect');
+const qCountInput = document.getElementById('qCount');
+const timerInput = document.getElementById('timerPerQ');
+const startBtn = document.getElementById('startBtn');
+const resetBtn = document.getElementById('resetBtn');
+const exportBtn = document.getElementById('exportBtn');
+const questionText = document.getElementById('questionText');
+const optionsDiv = document.getElementById('options');
+const qIndexSpan = document.getElementById('qIndex');
+const qTotalSpan = document.getElementById('qTotal');
+const scoreSpan = document.getElementById('score');
+const hitsSpan = document.getElementById('hits');
+const failsSpan = document.getElementById('fails');
+const answeredSpan = document.getElementById('answered');
+const progDiv = document.getElementById('prog');
+const levelTag = document.getElementById('levelTag');
+const timerSpan = document.getElementById('timer');
+const nextBtn = document.getElementById('nextBtn');
+const submitBtn = document.getElementById('submitBtn');
+const explanationDiv = document.getElementById('explanation');
+const summaryPre = document.getElementById('summary');
+
+startBtn.addEventListener('click', startQuiz);
+resetBtn.addEventListener('click', resetProgress);
+exportBtn.addEventListener('click', exportResults);
+nextBtn.addEventListener('click', nextQuestion);
+submitBtn.addEventListener('click', submitAnswer);
+
+// ------------------------
+// Funções principais
+// ------------------------
+function startQuiz(){
+  const level = levelSelect.value;
+  const qCount = Math.max(1, Math.min(100, parseInt(qCountInput.value) || 20));
+  state.perQuestionSeconds = Math.max(5, parseInt(timerInput.value) || 90);
+
+  // Filtra questões do nível
+  const pool = QUESTIONS.filter(q => q.level === level);
+  if(pool.length === 0){ alert('Nenhuma questão disponível para o nível selecionado.'); return }
+
+  // Embaralhar e cortar
+  shuffleArray(pool);
+  state.pool = pool.slice(0, Math.min(qCount, pool.length));
+  state.currentIndex = 0; state.score = 0; state.hits = 0; state.fails = 0; state.answered = 0; state.choices = [];
+  state.startTime = Date.now();
+  qTotalSpan.textContent = state.pool.length;
+  levelTag.textContent = 'Nível: ' + (level === 'intermediate' ? 'Intermediário' : 'Avançado');
+  updateSummary('Simulado iniciado. Boa sorte!');
+  renderQuestion();
+}
+
+function renderQuestion(){
+  clearTimer();n
+}
+
+function clearTimer(){
+  if(state.timerInterval) clearInterval(state.timerInterval);
+}
+
+function renderQuestion(){
+  clearTimer();
+  const q = state.pool[state.currentIndex];
+  if(!q) return finishQuiz();
+  qIndexSpan.textContent = state.currentIndex + 1;
+  questionText.textContent = q.question;
+  optionsDiv.innerHTML = '';
+  explanationDiv.classList.add('hidden'); explanationDiv.innerHTML = '';
+
+  if(q.type === 'mcq'){
+    q.options.forEach((opt, idx) =>{
+      const b = document.createElement('div');
+      b.className = 'opt'; b.tabIndex = 0;
+      b.textContent = opt;
+      b.dataset.idx = idx;
+      b.addEventListener('click', ()=> selectOption(b, q));
+      optionsDiv.appendChild(b);
+    });
+  } else if(q.type === 'tf'){
+    ['Verdadeiro','Falso'].forEach((t, idx)=>{
+      const b = document.createElement('div'); b.className='opt'; b.tabIndex=0; b.textContent=t; b.dataset.idx = idx===0; b.addEventListener('click', ()=> selectOption(b, q)); optionsDiv.appendChild(b);
+    })
+  }
+
+  // Timer
+  startTimer(state.perQuestionSeconds);
+  // Buttons
+  submitBtn.disabled = false; nextBtn.disabled = true;
+  updateStats();
+}
+
+function selectOption(el, q){
+  // desmarcar outros
+  [...optionsDiv.children].forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function submitAnswer(){
+  const q = state.pool[state.currentIndex];
+  if(!q) return;
+  const selected = [...optionsDiv.children].find(c => c.classList.contains('selected'));
+  if(!selected){ alert('Selecione uma opção antes de confirmar.'); return }
+  // checar
+  const chosen = q.type === 'mcq' ? parseInt(selected.dataset.idx) : (selected.dataset.idx === 'true');
+  const correct = q.answer;
+  const isCorrect = (q.type === 'mcq' ? chosen === correct : chosen === correct);
+
+  // marcar estilos
+  [...optionsDiv.children].forEach(c =>{
+    const idx = q.type==='mcq' ? parseInt(c.dataset.idx) : (c.dataset.idx === 'true');
+    if(q.type==='mcq'){
+      if(idx === correct) c.classList.add('correct');
+      if(c.classList.contains('selected') && idx !== correct) c.classList.add('wrong');
+    } else {
+      // tf
+      if((idx === correct) && c.classList.contains('selected')) c.classList.add('correct');
+      if(c.classList.contains('selected') && idx !== correct) c.classList.add('wrong');
+    }
+  });
+
+  // atualizar estado
+  state.answered += 1;
+  if(isCorrect){ state.score += 10; state.hits += 1 } else { state.fails += 1 }
+  state.choices.push({ qid: q.id, chosen, correct, isCorrect, ts: Date.now() });
+
+  // mostrar explicação
+  explanationDiv.innerHTML = `<strong>Explicação:</strong><br/>${q.explanation}`;
+  explanationDiv.classList.remove('hidden');
+
+  submitBtn.disabled = true; nextBtn.disabled = false;
+  updateStats();
+  clearTimer();
+}
+
+function nextQuestion(){
+  state.currentIndex += 1;
+  if(state.currentIndex >= state.pool.length) return finishQuiz();
+  renderQuestion();
+}
+
+function finishQuiz(){
+  clearTimer();
+  updateSummary(`Finalizado — Pontuação: ${state.score}. Acertos: ${state.hits}/${state.answered}. Erros: ${state.fails}.`);
+  questionText.textContent = 'Simulado finalizado.';
+  optionsDiv.innerHTML = '';
+  qIndexSpan.textContent = state.pool.length;
+  submitBtn.disabled = true; nextBtn.disabled = true;
+}
+
+function updateStats(){
+  scoreSpan.textContent = state.score;
+  hitsSpan.textContent = state.hits;
+  failsSpan.textContent = state.fails;
+  answeredSpan.textContent = state.answered;
+  const pct = state.pool.length ? Math.round((state.currentIndex / state.pool.length) * 100) : 0;
+  progDiv.style.width = pct + '%';
+}
+
+function updateSummary(text){ summaryPre.textContent = text }
+
+function startTimer(seconds){
+  let remain = seconds;
+  timerSpan.textContent = formatTime(remain);
+  state.timerInterval = setInterval(()=>{
+    remain -= 1; if(remain <= 0){ clearInterval(state.timerInterval); timerSpan.textContent='00:00'; onTimeExpired(); return }
+    timerSpan.textContent = formatTime(remain);
+  }, 1000);
+}
+
+function onTimeExpired(){
+  // marca como falha automática
+  const q = state.pool[state.currentIndex];
+  state.answered += 1; state.fails += 1; state.choices.push({ qid:q.id, chosen: null, correct: q.answer, isCorrect:false, ts: Date.now(), timeout:true });
+  explanationDiv.innerHTML = `<strong>Tempo esgotado.</strong><br/>Explicação: ${q.explanation}`; explanationDiv.classList.remove('hidden');
+  submitBtn.disabled = true; nextBtn.disabled = false; updateStats();
+}
+
+function exportResults(){
+  if(!state.choices.length){ alert('Nenhum resultado para exportar. Faça um simulado primeiro.'); return }
+  const data = { meta: { startedAt: state.startTime, score: state.score, hits: state.hits, fails: state.fails }, choices: state.choices };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'simulado_resultados.json'; a.click(); URL.revokeObjectURL(url);
+}
+
+function resetProgress(){
+  if(confirm('Resetar progresso local?')){ localStorage.removeItem('simulado_state'); alert('Progresso resetado.') }
+}
+
+// util
+function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } }
+function formatTime(s){ const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); return `${mm}:${ss}` }
+
+// Load/save progress (basic)
+window.addEventListener('beforeunload', ()=>{
+  try{ localStorage.setItem('simulado_state', JSON.stringify({ state, poolIds: state.pool.map(p=>p.id) })) }catch(e){}
+});
+
+(function tryLoad(){
+  try{
+    const raw = localStorage.getItem('simulado_state'); if(!raw) return;
+    const parsed = JSON.parse(raw);
+    // carregou estado mínimo
+    // (não restaura tudo para simplificar) — você pode estender essa lógica
+    updateSummary('Progresso anterior detectado — inicie um novo simulado para sobrescrever.');
+  }catch(e){ }
+})();
+
+</script>
+</body>
+</html>
