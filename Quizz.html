@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Simulador de Quiz Interativo - André Gonçallez</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+      Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    background: #07192b;
+    color: #e6eef8;
+    margin: 0;
+    padding: 20px;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #0b1220;
+    border-radius: 12px;
+    padding: 20px 30px;
+    box-shadow: 0 8px 20px rgba(2,6,23,0.8);
+  }
+  h1 {
+    margin-top: 0;
+    color: #06b6d4;
+  }
+  select, input[type=number] {
+    background: rgba(255 255 255 / 0.05);
+    border: 1px solid #94a3b8;
+    border-radius: 6px;
+    color: #94a3b8;
+    padding: 6px 8px;
+    font-size: 16px;
+    margin-left: 6px;
+  }
+  label {
+    display: inline-block;
+    margin-right: 15px;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #94a3b8;
+  }
+  button {
+    background: #06b6d4;
+    color: #042024;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background: #028aad;
+  }
+  .quiz-area {
+    margin-top: 20px;
+  }
+  .question {
+    font-size: 20px;
+    margin-bottom: 15px;
+  }
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .option {
+    background: rgba(255 255 255 / 0.02);
+    border: 1px solid rgba(255 255 255 / 0.02);
+    border-radius: 8px;
+    padding: 12px 18px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+  .option:hover {
+    background: rgba(6, 182, 212, 0.1);
+  }
+  .option.selected {
+    border-color: #06b6d4;
+    background: rgba(6, 182, 212, 0.25);
+  }
+  .option.correct {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.15);
+    font-weight: 700;
+  }
+  .option.wrong {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    font-weight: 700;
+  }
+  .explanation {
+    margin-top: 18px;
+    background: rgba(255 255 255 / 0.05);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 14px;
+    color: #94a3b8;
+  }
+  .stats {
+    margin-top: 25px;
+    font-size: 16px;
+  }
+  .small {
+    font-size: 13px;
+    color: #94a3b8;
+  }
+  .progressbar {
+    height: 10px;
+    background: rgba(255 255 255 / 0.03);
+    border-radius: 999px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .progress {
+    height: 100%;
+    background: linear-gradient(90deg, #06b6d4, #7c3aed);
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+  #timer {
+    font-weight: 700;
+    font-size: 18px;
+    color: #06b6d4;
+  }
+  @media (max-width: 600px) {
+    .options {
+      font-size: 16px;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Simulador de Quiz Interativo - André Gonçallez</h1>
+
+    <div>
+      <label for="levelSelect">Nível:</label>
+      <select id="levelSelect">
+        <option value="intermediate">Intermediário</option>
+        <option value="advanced">Avançado</option>
+      </select>
+
+      <label for="qCount">Número de questões:</label>
+      <input type="number" id="qCount" value="20" min="5" max="100" />
+
+      <label for="timerPerQ">Tempo por questão (segundos):</label>
+      <input type="number" id="timerPerQ" value="90" min="10" max="600" />
+
+      <button id="startBtn">Iniciar Simulado</button>
+    </div>
+
+    <div class="quiz-area" style="display:none;">
+      <div class="question" id="questionText">Questão aparecerá aqui</div>
+      <div class="options" id="options"></div>
+      <div style="margin-top:12px;">
+        <button id="submitBtn" disabled>Confirmar Resposta</button>
+        <button id="nextBtn" disabled>Próxima Questão</button>
+        <span style="margin-left:20px;">Tempo restante: <span id="timer">--</span></span>
+      </div>
+      <div class="explanation" id="explanation" style="display:none;"></div>
+
+      <div class="stats">
+        <div>Pontuação: <span id="score">0</span></div>
+        <div>Acertos: <span id="hits">0</span> / <span id="answered">0</span></div>
+        <div>Erros: <span id="fails">0</span></div>
+        <div class="progressbar">
+          <div class="progress" id="progressBar"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  const QUESTIONS = [
+    // ========================
+    // EXEMPLO DE QUESTÕES:
+    // ========================
+
+    // === Intermediário ===
+    {
+      id: "i1",
+      level: "intermediate",
+      question: "Qual comando Linux lista processos ativos e pode ser usado para ordenar por uso de CPU?",
+      options: ["top", "ps aux --sort=-%cpu", "htop", "nice"],
+      answer: 1,
+      explanation:
+        "O comando 'ps aux --sort=-%cpu' lista processos e ordena por uso de CPU. 'top' e 'htop' também mostram, mas a opção de ordenação direta é do 'ps'."
+    },
+    {
+      id: "i2",
+      level: "intermediate",
+      question: "Qual RFC define o IPv4?",
+      options: ["RFC 791", "RFC 826", "RFC 2460", "RFC 1918"],
+      answer: 0,
+      explanation: "A RFC 791 define o IPv4."
+    },
+    {
+      id: "i3",
+      level: "intermediate",
+      question: "Qual ferramenta é mais indicada para capturar e analisar pacotes em rede?",
+      options: ["nmap", "Wireshark", "Metasploit", "Burp Suite"],
+      answer: 1,
+      explanation: "Wireshark é a ferramenta padrão para captura e análise de pacotes."
+    },
+
+    // ========================
+    // AQUI VOCÊ PODE INCLUIR MAIS QUESTÕES
+    // Siga o formato do objeto abaixo:
+    /*
+    {
+      id: "identificador_unico",
+      level: "intermediate" ou "advanced",
+      question: "Sua pergunta aqui?",
+      options: ["Opção 1", "Opção 2", "Opção 3", "Opção 4"],
+      answer: índice_da_opção_correta (começa em 0),
+      explanation: "Explicação detalhada para a resposta."
+    },
+    */
+    // ========================
+
+    // === Avançado ===
+    {
+      id: "a1",
+      level: "advanced",
+      question: "Em OSPF, qual é a função do DR (Designated Router)?",
+      options: [
+        "Gerenciar LSDB",
+        "Reduzir broadcast",
+        "Reduzir adjacências em redes multiacesso",
+        "Fazer NAT"
+      ],
+      answer: 2,
+      explanation:
+        "O DR reduz o número de adjacências em redes multiacesso (como Ethernet)."
+    },
+    {
+      id: "a2",
+      level: "advanced",
+      question: "Qual comando Terraform inicializa um diretório de trabalho?",
+      options: ["terraform apply", "terraform init", "terraform plan", "terraform validate"],
+      answer: 1,
+      explanation: "O comando 'terraform init' baixa providers e inicializa o diretório."
+    },
+    {
+      id: "a3",
+      level: "advanced",
+      question:
+        "Qual técnica é usada para proteger segredos em pipeline CI/CD?",
+      options: [
+        "Guardar em código fonte",
+        "Usar variáveis de ambiente seguras/secret manager",
+        "Enviar por e-mail",
+        "Hardcode no container"
+      ],
+      answer: 1,
+      explanation:
+        "Segredos devem ser armazenados em secret managers ou variáveis protegidas do CI."
+    }
+  ];
+
+  // Estado
+  let currentIndex = 0;
+  let score = 0;
+  let hits = 0;
+  let fails = 0;
+  let answered = 0;
+  let timerInterval = null;
+  let timeLeft = 0;
+  let selectedOption = null;
+  let filteredQuestions = [];
+
+  // Elementos DOM
+  const levelSelect = document.getElementById("levelSelect");
+  const qCountInput = document.getElementById("qCount");
+  const timerPerQInput = document.getElementById("timerPerQ");
+  const startBtn = document.getElementById("startBtn");
+  const quizArea = document.querySelector(".quiz-area");
+  const questionText = document.getElementById("questionText");
+  const optionsDiv = document.getElementById("options");
+  const submitBtn = document.getElementById("submitBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const timerSpan = document.getElementById("timer");
+  const explanationDiv = document.getElementById("explanation");
+  const scoreSpan = document.getElementById("score");
+  const hitsSpan = document.getElementById("hits");
+  const failsSpan = document.getElementById("fails");
+  const answeredSpan = document.getElementById("answered");
+  const progressBar = document.getElementById("progressBar");
+
+  // Eventos
+  startBtn.addEventListener("click", startQuiz);
+  submitBtn.addEventListener("click", submitAnswer);
+  nextBtn.addEventListener("click", nextQuestion);
+
+  function startQuiz() {
+    // Reset estado
+    score = 0;
+    hits = 0;
+    fails = 0;
+    answered = 0;
+    currentIndex = 0;
+    selectedOption = null;
+    explanationDiv.style.display = "none";
+    submitBtn.disabled = true;
+    nextBtn.disabled = true;
+
+    // Filtra questões por nível e quantidade
+    const level = levelSelect.value;
+    const qCount = Math.min(Math.max(parseInt(qCountInput.value) || 20, 5), 100);
+
+    filteredQuestions = QUESTIONS.filter((q) => q.level === level);
+    if (filteredQuestions.length === 0) {
+      alert("Nenhuma questão disponível para o nível selecionado.");
+      return;
+    }
+    shuffleArray(filteredQuestions);
+    filteredQuestions = filteredQuestions.slice(0, qCount);
+
+    quizArea.style.display = "block";
+    updateStats();
+    showQuestion();
+  }
+
+  function showQuestion() {
+    clearInterval(timerInterval);
+    selectedOption = null;
+    explanationDiv.style.display = "none";
+    submitBtn.disabled = true;
+    nextBtn.disabled = true;
+
+    if (currentIndex >= filteredQuestions.length) {
+      finishQuiz();
+      return;
+    }
+
+    const q = filteredQuestions[currentIndex];
+    questionText.textContent = `Questão ${currentIndex + 1}: ${q.question}`;
+
+    optionsDiv.innerHTML = "";
+    q.options.forEach((opt, i) => {
+      const div = document.createElement("div");
+      div.className = "option";
+      div.textContent = opt;
+      div.dataset.index = i;
+      div.addEventListener("click", () => {
+        if (submitBtn.disabled === false) {
+          clearSelection();
+          div.classList.add("selected");
+          selectedOption = i;
+          submitBtn.disabled = false;
+        }
+      });
+      optionsDiv.appendChild(div);
+    });
+
+    // Timer
+    timeLeft = Math.min(Math.max(parseInt(timerPerQInput.value) || 90, 10), 600);
+    timerSpan.textContent = formatTime(timeLeft);
+    timerInterval = setInterval(() => {
+      timeLeft--;
+      timerSpan.textContent = formatTime(timeLeft);
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        submitBtn.disabled = true;
+        showExplanation(true);
+      }
+    }, 1000);
+
+    updateStats();
+    updateProgressBar();
+  }
+
+  function clearSelection() {
+    const opts = optionsDiv.querySelectorAll(".option");
+    opts.forEach((opt) => opt.classList.remove("selected"));
+  }
+
+  function submitAnswer() {
+    if (selectedOption === null) {
+      alert("Selecione uma opção antes de confirmar.");
+      return;
+    }
+    clearInterval(timerInterval);
+    const q = filteredQuestions[currentIndex];
+    const isCorrect = selectedOption === q.answer;
+
+    const opts = optionsDiv.querySelectorAll(".option");
+    opts.forEach((opt) => {
+      const idx = parseInt(opt.dataset.index);
+      if (idx === q.answer) {
+        opt.classList.add("correct");
+      }
+      if (opt.classList.contains("selected") && idx !== q.answer) {
+        opt.classList.add("wrong");
+      }
+    });
+
+    if (isCorrect) {
+      score += 10;
+      hits++;
+    } else {
+      fails++;
+    }
+    answered++;
+
+    submitBtn.disabled = true;
+    nextBtn.disabled = false;
+
+    showExplanation(false);
+    updateStats();
+  }
+
+  function showExplanation(timeout) {
+    const q = filteredQuestions[currentIndex];
+    explanationDiv.style.display = "block";
+    explanationDiv.innerHTML = timeout
+      ? `<strong>Tempo esgotado.</strong><br>${q.explanation}`
+      : `<strong>Explicação:</strong><br>${q.explanation}`;
+  }
+
+  function nextQuestion() {
+    currentIndex++;
+    selectedOption = null;
+    explanationDiv.style.display = "none";
+    submitBtn.disabled = true;
+    nextBtn.disabled = true;
+    showQuestion();
+  }
+
+  function finishQuiz() {
+    clearInterval(timerInterval);
+    quizArea.style.display = "none";
+    alert(
+      `Simulado finalizado!\n\nPontuação: ${score}\nAcertos: ${hits}\nErros: ${fails}`
+    );
+  }
+
+  function updateStats() {
+    scoreSpan.textContent = score;
+    hitsSpan.textContent = hits;
+    failsSpan.textContent = fails;
+    answeredSpan.textContent = answered;
+  }
+
+  function updateProgressBar() {
+    const percent = ((currentIndex) / filteredQuestions.length) * 100;
+    progressBar.style.width = `${percent}%`;
+  }
+
+  function formatTime(seconds) {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+</script>
+</body>
+</html>
